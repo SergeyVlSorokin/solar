@@ -1,0 +1,64 @@
+# generated: 2026-04-17T17:16:50+02:00
+# last_updated: 2026-04-17T17:16:50+02:00
+# project: solar
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: "2026-04-17T17:16:50+02:00"
+last_updated: "2026-04-17T22:55:30+02:00"
+project: "solar"
+project_key: "NOKEY"
+tracking_system: "file-system"
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  epic-1: in-progress
+  1-1-initialize-ccds-data-science-architecture: done
+  1-2-standardize-raw-input-profiles-to-parquet: done
+  1-3-execute-baseline-orchestration-loop: done
+  epic-1-retrospective: optional
+  epic-2: backlog
+  2-1-pvlib-array-generation-module: backlog
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1-fcr-dynamic-capacity-bounds-allocation: backlog
+  3-2-battery-soc-sequential-mathematical-loop: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-main-fuse-transmission-limits: backlog
+  4-2-grid-flow-and-curtailment-vector-truncation: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-spot-market-and-aggregator-revenue-arrays: backlog
+  5-2-skattereduktion-tax-rebate-dynamic-capping: backlog
+  epic-5-retrospective: optional
