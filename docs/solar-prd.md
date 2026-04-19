@@ -2,7 +2,16 @@
 
 **Product:** Residential Solar & Battery Economic Simulation Model (Sweden)
 
-**Version:** 1.0 (Deterministic Baseline, Aggregator-Agnostic)
+**Version:** 1.1 (Battery Logic Phase 1)
+
+**Subtitle:** Deterministic Baseline, Aggregator-Agnostic
+
+## **Revision History**
+
+| Version | Date | Description |
+| :--- | :--- | :--- |
+| 1.0 | 2026-04-16 | Initial baseline and solar physics definition. |
+| 1.1 | 2026-04-19 | Refactored battery parameters into grouped `BatteryConfig`. Implemented FCR capacity allocation logic. |
 
 ## **1\. Objective**
 

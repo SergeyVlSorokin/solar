@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 @dataclass
 class SolarStringConfig:
@@ -10,9 +10,19 @@ class SolarStringConfig:
 
 
 @dataclass
+class BatteryConfig:
+    capacity_kwh: float
+    max_power_kw: float
+    round_trip_efficiency: float
+    fcr_allocation_pct: float
+
+
+@dataclass
 class SimulationConfig:
-    battery_capacity_kwh: float = 0.0
     return_timeseries: bool = False
+    
+    # Battery (Epic 3)
+    battery: Optional[BatteryConfig] = None
     
     # Solar Strings (Epic 2)
     pv_strings: List[SolarStringConfig] = field(default_factory=list)

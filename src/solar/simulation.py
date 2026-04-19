@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from solar.config import SimulationConfig
 from solar.models.pv_generation import calculate_solar_production
+from solar.models.battery_logic import allocate_battery_capacity, simulate_battery_loop
 
 EXPECTED_HOURS = 8760
 
@@ -52,8 +53,20 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
 
     # 3. Physics & Logic Simulation
     p_solar = np.zeros_like(consumption)
-    net_load = consumption # Default to 0-PV baseline
+    net_load = consumption.copy()  # Default to 0-PV baseline
+    
+    # 3.1. Battery Parameters Initialization
+    p_charge = np.zeros_like(consumption)
+    p_discharge = np.zeros_like(consumption)
+    soc_kwh = np.zeros_like(consumption)
+    p_fcr_kw = 0.0
+    battery_allocation = None
 
+    if config.battery:
+        battery_allocation = allocate_battery_capacity(config.battery)
+        p_fcr_kw = battery_allocation.p_fcr_kw
+
+    # 3.2. Solar Production
     if config.pv_strings:
         p_solar, net_load = calculate_solar_production(
             latitude=config.latitude,
@@ -63,10 +76,23 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
             consumption=consumption
         )
 
-    # 4. Grid Balancing (Simplified for Epic 2 - no battery or fuse constraints yet)
-    # Positive net_load means we buy from grid, negative means we sell
-    grid_buy = np.maximum(0, net_load)
-    grid_sell = np.maximum(0, -net_load)
+    # 3.3. Sequential Battery Loop
+    if config.battery and battery_allocation:
+        p_charge, p_discharge, soc_kwh = simulate_battery_loop(
+            net_load=net_load,
+            p_arb_kw=battery_allocation.p_arb_kw,
+            e_arb_kwh=battery_allocation.e_arb_kwh,
+            eta_rt=config.battery.round_trip_efficiency
+        )
+
+    # 4. Grid Balancing
+    # Residual(t) = Net(t) + P_charge(t) - P_discharge(t)
+    residual = net_load + p_charge - p_discharge
+    
+    grid_buy = np.maximum(0, residual)
+    grid_sell = np.maximum(0, -residual)
+    
+    # Financials (Epic 5 placeholder - some logic already here)
     # Spend(t) = Grid_buy(t) * ((price_spot + transfer + tax) * (1 + vat))
     energy_stack = spot_prices + config.grid_transfer_fee_sek + config.energy_tax_sek
     hourly_spend = grid_buy * (energy_stack * (1 + config.vat_rate))
@@ -74,10 +100,10 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
     # Earn_spot(t) = Grid_sell(t) * (price_spot + utility_compensation)
     hourly_earn_spot = grid_sell * (spot_prices + config.utility_sell_compensation)
 
-    # 4. Yearly Aggregations
+    # 5. Yearly Aggregations
     total_money_spent = float(np.sum(hourly_spend))
     total_money_earned_spot = float(np.sum(hourly_earn_spot))
-    total_money_earned_fcr = 0.0 # Bypassed in baseline
+    total_money_earned_fcr = 0.0 # Bypassed until Story 5.1
 
     # Skattereduktion (Tax Credit)
     # Capped at min(exported_kwh, imported_kwh, 30,000 kWh)
@@ -98,13 +124,19 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
         "total_money_earned_spot_sek": total_money_earned_spot,
         "total_tax_credit_sek": total_tax_credit_sek,
         "net_electricity_cost_sek": net_cost,
+        "total_battery_charge_kwh": float(np.sum(p_charge)),
+        "total_battery_discharge_kwh": float(np.sum(p_discharge)),
     }
 
-    # 4. Memory footprint toggle
+    # 6. Memory footprint toggle
     if config.return_timeseries:
         ts_df = pd.DataFrame({
             "consumption": consumption,
             "p_solar": p_solar,
+            "net_load": net_load,
+            "battery_charged_kwh": p_charge,
+            "battery_discharged_kwh": p_discharge,
+            "battery_soc_kwh": soc_kwh,
             "grid_buy": grid_buy,
             "grid_sell": grid_sell,
             "spot_prices": spot_prices,

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: "2026-04-17T17:16:50+02:00"
-last_updated: "2026-04-19T17:19:35+02:00"
+last_updated: "2026-04-19T19:00:00+02:00"
 project: "solar"
 project_key: "NOKEY"
 tracking_system: "file-system"
@@ -50,9 +50,9 @@ development_status:
   epic-2: in-progress
   2-1-pvlib-array-generation-module: done
   epic-2-retrospective: optional
-  epic-3: backlog
-  3-1-fcr-dynamic-capacity-bounds-allocation: backlog
-  3-2-battery-soc-sequential-mathematical-loop: backlog
+  epic-3: in-progress
+  3-1-fcr-dynamic-capacity-bounds-allocation: done
+  3-2-battery-soc-sequential-mathematical-loop: review
   epic-3-retrospective: optional
   epic-4: backlog
   4-1-main-fuse-transmission-limits: backlog

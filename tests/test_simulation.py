@@ -4,13 +4,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from solar.config import SimulationConfig
+from solar.config import SimulationConfig, BatteryConfig, SolarStringConfig
 from solar.simulation import run_simulation
 
 
 def test_simulation_config_defaults():
-    config = SimulationConfig(battery_capacity_kwh=0)
-    assert config.battery_capacity_kwh == 0
+    config = SimulationConfig()
+    assert config.battery is None
     assert config.return_timeseries is False
 
 
@@ -33,7 +33,7 @@ def test_run_simulation_data_loading(mock_read_parquet):
 
     mock_read_parquet.side_effect = mock_read
 
-    config = SimulationConfig(battery_capacity_kwh=0)
+    config = SimulationConfig()
     result = run_simulation(config, "mock_dir")
 
     assert "total_money_spent" in result
@@ -64,14 +64,15 @@ def test_run_simulation_timeseries(mock_read_parquet):
 
     mock_read_parquet.side_effect = mock_read
 
-    config = SimulationConfig(battery_capacity_kwh=0, return_timeseries=True)
+    config = SimulationConfig(return_timeseries=True)
     metrics, ts_df = run_simulation(config, "mock_dir")
 
     assert "total_money_spent" in metrics
     assert isinstance(ts_df, pd.DataFrame)
     assert len(ts_df) == 8760
     assert list(ts_df.columns) == [
-        "consumption", "p_solar", "grid_buy", "grid_sell", "spot_prices", "hourly_spend", "hourly_earn_spot"
+        "consumption", "p_solar", "net_load", "battery_charged_kwh", "battery_discharged_kwh", 
+        "battery_soc_kwh", "grid_buy", "grid_sell", "spot_prices", "hourly_spend", "hourly_earn_spot"
     ]
 
 
@@ -87,14 +88,22 @@ def test_financial_math_accuracy(mock_read_parquet):
     mock_read_parquet.side_effect = [load_df, spot_df, ghi_df, dni_df, dhi_df]
 
     config = SimulationConfig(
-        battery_capacity_kwh=0,
+        battery=BatteryConfig(
+            capacity_kwh=10.0,
+            max_power_kw=5.0,
+            round_trip_efficiency=0.90,
+            fcr_allocation_pct=0.80
+        ),
         grid_transfer_fee_sek=0.2,
         energy_tax_sek=0.3,
         vat_rate=0.25
     )
-    result = run_simulation(config, "mock_dir")
-
+    # The battery is now used in the loop equations (Story 3.2).
+    # Since Net load is constant +10kW and p_arb is only 1.0kW (0.2 * 5.0),
+    # the battery will attempt to discharge until empty. But it starts empty (0.0).
+    # So p_discharge will be 0.
+    metrics = run_simulation(config, "mock_dir")
     expected_total = 8760 * 10 * 1.875
-    assert result["total_money_spent"] == pytest.approx(expected_total)
-    assert result["net_electricity_cost_sek"] == pytest.approx(expected_total)
-    assert result["total_tax_credit_sek"] == 0.0 # No export in baseline
+    assert metrics["total_money_spent"] == pytest.approx(expected_total)
+    assert metrics["net_electricity_cost_sek"] == pytest.approx(expected_total)
+    assert metrics["total_tax_credit_sek"] == 0.0 # No export in baseline
