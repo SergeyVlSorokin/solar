@@ -34,3 +34,40 @@ def test_calculate_grid_limit_invalid_inputs():
         
     with pytest.raises(ValueError, match="exceeds realistic residential limits"):
         calculate_grid_limit(2000)
+
+def test_calculate_grid_flows():
+    import numpy as np
+    from solar.models.grid_finance import calculate_grid_flows
+    
+    # Residual = [5, 15, -5, -15, 0]
+    # p_grid_max = 10
+    residual = np.array([5.0, 15.0, -5.0, -15.0, 0.0])
+    p_grid_max = 10.0
+    
+    gb, gs, ul, cr = calculate_grid_flows(residual, p_grid_max)
+    
+    # Expected:
+    # 5.0 -> Buy 5, Sell 0, Unmet 0, Curt 0
+    # 15.0 -> Buy 10, Sell 0, Unmet 5, Curt 0
+    # -5.0 -> Buy 0, Sell 5, Unmet 0, Curt 0
+    # -15.0 -> Buy 0, Sell 10, Unmet 0, Curt 5
+    # 0.0 -> Buy 0, Sell 0, Unmet 0, Curt 0
+    
+    assert np.allclose(gb, [5, 10, 0, 0, 0])
+    assert np.allclose(gs, [0, 0, 5, 10, 0])
+    assert np.allclose(ul, [0, 5, 0, 0, 0])
+    assert np.allclose(cr, [0, 0, 0, 5, 0])
+
+def test_calculate_grid_flows_zero_limit():
+    import numpy as np
+    from solar.models.grid_finance import calculate_grid_flows
+    
+    residual = np.array([10.0, -10.0])
+    p_grid_max = 0.0
+    
+    gb, gs, ul, cr = calculate_grid_flows(residual, p_grid_max)
+    
+    assert np.allclose(gb, [0, 0])
+    assert np.allclose(gs, [0, 0])
+    assert np.allclose(ul, [10, 0])
+    assert np.allclose(cr, [0, 10])

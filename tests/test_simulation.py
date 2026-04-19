@@ -74,7 +74,8 @@ def test_run_simulation_timeseries(mock_read_parquet):
     assert len(ts_df) == 8760
     assert list(ts_df.columns) == [
         "consumption", "p_solar", "net_load", "battery_charged_kwh", "battery_discharged_kwh", 
-        "battery_soc_kwh", "grid_buy", "grid_sell", "spot_prices", "hourly_spend", "hourly_earn_spot"
+        "battery_soc_kwh", "grid_buy", "grid_sell", "unmet_load", "curtailed", 
+        "spot_prices", "hourly_spend", "hourly_earn_spot"
     ]
 
 

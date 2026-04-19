@@ -4,7 +4,7 @@ import pandas as pd
 from solar.config import SimulationConfig
 from solar.models.pv_generation import calculate_solar_production
 from solar.models.battery_logic import allocate_battery_capacity, simulate_battery_loop
-from solar.models.grid_finance import calculate_grid_limit
+from solar.models.grid_finance import calculate_grid_limit, calculate_grid_flows
 
 EXPECTED_HOURS = 8760
 
@@ -94,8 +94,10 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
     # Residual(t) = Net(t) + P_charge(t) - P_discharge(t)
     residual = net_load + p_charge - p_discharge
     
-    grid_buy = np.maximum(0, residual)
-    grid_sell = np.maximum(0, -residual)
+    grid_buy, grid_sell, unmet_load, curtailed = calculate_grid_flows(
+        residual=residual,
+        p_grid_max=p_grid_max_kw
+    )
     
     # Financials (Epic 5 placeholder - some logic already here)
     # Spend(t) = Grid_buy(t) * ((price_spot + transfer + tax) * (1 + vat))
@@ -132,6 +134,8 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
         "total_battery_charge_kwh": float(np.sum(p_charge)),
         "total_battery_discharge_kwh": float(np.sum(p_discharge)),
         "p_grid_max_kw": p_grid_max_kw,
+        "total_unmet_load_kwh": float(np.sum(unmet_load)),
+        "total_curtailed_kwh": float(np.sum(curtailed)),
     }
 
     # 6. Memory footprint toggle
@@ -145,6 +149,8 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
             "battery_soc_kwh": soc_kwh,
             "grid_buy": grid_buy,
             "grid_sell": grid_sell,
+            "unmet_load": unmet_load,
+            "curtailed": curtailed,
             "spot_prices": spot_prices,
             "hourly_spend": hourly_spend,
             "hourly_earn_spot": hourly_earn_spot,
