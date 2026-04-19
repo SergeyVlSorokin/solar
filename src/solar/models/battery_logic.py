@@ -1,6 +1,6 @@
 import numpy as np
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, Optional
 from solar.config import BatteryConfig
 
 @dataclass
@@ -51,11 +51,61 @@ def allocate_battery_capacity(config: BatteryConfig) -> AllocationResult:
         e_arb_kwh=e_arb_kwh
     )
 
+def get_arbitrage_signals(prices: np.ndarray, n_low: int = 6, n_high: int = 6) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Identifies the n_low cheapest and n_high most expensive hours for EACH 24h window.
+    Returns two boolean masks of the same length as prices.
+    """
+    num_steps = len(prices)
+    if num_steps == 0:
+        return np.array([], dtype=bool), np.array([], dtype=bool)
+
+    num_days = num_steps // 24
+    num_full_day_hours = num_days * 24
+    
+    is_low = np.zeros(num_steps, dtype=bool)
+    is_high = np.zeros(num_steps, dtype=bool)
+
+    # 1. Process full days
+    if num_days > 0:
+        full_day_prices = prices[:num_full_day_hours].reshape((num_days, 24))
+        sorted_idx = np.argsort(full_day_prices, axis=1)
+        
+        is_low_2d = np.zeros((num_days, 24), dtype=bool)
+        is_high_2d = np.zeros((num_days, 24), dtype=bool)
+        
+        rows = np.arange(num_days)[:, None]
+        is_low_2d[rows, sorted_idx[:, :n_low]] = True
+        is_high_2d[rows, sorted_idx[:, -n_high:]] = True
+        
+        is_low[:num_full_day_hours] = is_low_2d.flatten()
+        is_high[:num_full_day_hours] = is_high_2d.flatten()
+    
+    # 2. Process remaining hours (partial day at the end)
+    if num_steps > num_full_day_hours:
+        remaining = prices[num_full_day_hours:]
+        num_rem = len(remaining)
+        sorted_rem = np.argsort(remaining)
+        
+        # Scale n_low/n_high for the partial day if needed, or just use raw n
+        # Here we just use n_low/n_high capped by remaining length
+        rem_low_idx = sorted_rem[:min(n_low, num_rem)]
+        rem_high_idx = sorted_rem[-min(n_high, num_rem):]
+        
+        offset = num_full_day_hours
+        is_low[offset + rem_low_idx] = True
+        is_high[offset + rem_high_idx] = True
+    
+    return is_low, is_high
+
 def simulate_battery_loop(
     net_load: np.ndarray,
     p_arb_kw: float,
     e_arb_kwh: float,
-    eta_rt: float
+    eta_rt: float,
+    spot_prices: Optional[np.ndarray] = None,
+    n_charge_hours: int = 6,
+    n_discharge_hours: int = 6
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Sequential battery state-of-charge simulation loop (PRD 5.4).
@@ -79,6 +129,16 @@ def simulate_battery_loop(
         raise ValueError(f"e_arb_kwh must be non-negative; got {e_arb_kwh}")
 
     num_steps = len(net_load)
+
+    # 2. Arbitrage Signal Pre-calculation
+    # If prices are provided, we enable price-driven arbitrage.
+    # Otherwise, we default to pure self-consumption (no price signals).
+    is_low = np.zeros(num_steps, dtype=bool)
+    is_high = np.zeros(num_steps, dtype=bool)
+    if spot_prices is not None:
+        is_low, is_high = get_arbitrage_signals(spot_prices, n_low=n_charge_hours, n_high=n_discharge_hours)
+
+    # 3. State Initialization
     p_charge = np.zeros(num_steps)
     p_discharge = np.zeros(num_steps)
     soc = np.zeros(num_steps + 1)  # Including t=0
@@ -91,14 +151,22 @@ def simulate_battery_loop(
         current_net = net_load[t]
         prev_soc = soc[t]
         
-        if current_net < 0:  # Excess Solar (Charge)
-            # P_charge(t) = min(abs(Net(t)), P_arb, (E_arb - SOC(t-1)) / eta_c)
+        # Priority 1: Solar Self-Consumption (Charge if excess solar)
+        if current_net < 0:
             p_charge[t] = min(abs(current_net), p_arb_kw, (e_arb_kwh - prev_soc) / eta_eff)
             soc[t+1] = prev_soc + (p_charge[t] * eta_eff)
             
-        elif current_net > 0:  # Need Power (Discharge)
-            # P_discharge(t) = min(Net(t), P_arb, SOC(t-1) * eta_d)
-            p_discharge[t] = min(current_net, p_arb_kw, prev_soc * eta_eff)
+        # Priority 2: Price Arbitrage (Charge if price is low, even if net_load > 0)
+        elif is_low[t]:
+            # Note: We still honor p_arb_kw and e_arb_kwh
+            p_charge[t] = min(p_arb_kw, (e_arb_kwh - prev_soc) / eta_eff)
+            soc[t+1] = prev_soc + (p_charge[t] * eta_eff)
+            
+        # Priority 3: Displacement/Discharge (Need power OR price is high)
+        elif current_net > 0 or is_high[t]:
+            # P_discharge targets either the load or max battery power
+            target_discharge = current_net if (current_net > 0 and not is_high[t]) else p_arb_kw
+            p_discharge[t] = min(target_discharge, p_arb_kw, prev_soc * eta_eff)
             soc[t+1] = prev_soc - (p_discharge[t] / eta_eff)
             
         else:  # Neutral

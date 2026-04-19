@@ -31,6 +31,10 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
         raise ValueError(
             f"load_profile.parquet has {len(consumption)} rows; expected {EXPECTED_HOURS}."
         )
+    if len(spot_prices) != len(consumption):
+        raise ValueError(
+            f"spot_prices length ({len(spot_prices)}) does not match consumption length ({len(consumption)})."
+        )
     # 2. Load Weather Data (GHI, DNI, DHI)
     # Support both standard names and raw PVGIS names (G(h), Gb(n), Gd(h))
     def _extract_col(df, aliases):
@@ -87,7 +91,8 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
             net_load=net_load,
             p_arb_kw=battery_allocation.p_arb_kw,
             e_arb_kwh=battery_allocation.e_arb_kwh,
-            eta_rt=config.battery.round_trip_efficiency
+            eta_rt=config.battery.round_trip_efficiency,
+            spot_prices=spot_prices
         )
 
     # 4. Grid Balancing

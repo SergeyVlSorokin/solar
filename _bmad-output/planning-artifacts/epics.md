@@ -180,6 +180,22 @@ So that I can accurately calculate hour-by-hour physical arbitrage limits.
 **And** it strictly clamps the resulting `SOC(t)` between `[0, E_arb]` bounds
 **And** returns purely the 1D arrays for `P_charge` and `P_discharge`.
 
+### Story 3.3: Intraday Price Arbitrage Logic
+
+As a Data Analyst,
+I want the battery to charge from the grid during cheap hours and discharge during expensive hours,
+So that I can model realistic intraday arbitrage economics beyond simple solar self-consumption.
+
+**Acceptance Criteria:**
+
+**Given** the 1D numpy array `spot_prices` and the pre-calculated boundaries `P_arb`, `E_arb`
+**When** the sequential timeline loop executes
+**Then** it identifies the $N$ cheapest hours of each day (e.g., 6 hours) to permit Grid-to-Battery charging
+**And** it identifies the $M$ most expensive hours of each day (e.g., 6 hours) to prioritize discharging
+**And** it maintains "Solar Priority" (excess solar always charges the battery regardless of price)
+**And** it strictly obeys physical inverter power and energy capacity limits
+**And** returns the updated `P_charge` and `P_discharge` vectors including arbitrage flows.
+
 ## Epic 4: Grid Fuses & Curtailment Constraints
 
 Enforce maximum grid transmission limits based on the property's main fuse (Amperes), mathematically guaranteeing that excess solar is properly curtailed if the battery is full and the fuse is maxed.

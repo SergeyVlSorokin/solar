@@ -14,3 +14,8 @@
 +
 +- **Hardcoded 400V grid voltage** — Formula in `grid_finance.py` is hardcoded for 400V. While specified in FR6, parameterizing it would improve future-proofing. [src/solar/models/grid_finance.py:11]
 
+## Deferred from: code review of 3-3-intraday-price-arbitrage-logic.md (2026-04-19)
+
+- **Array Allocation Inefficiency** — Multiple intermediate copies and reshapes in ranking logic. Could be optimized for memory. [battery_logic.py:59]
+- **Hardcoded Defaults Consistency** — `n_low=6` and `n_high=6` are repeated in multiple signatures instead of using constants or config. [battery_logic.py:54]
+- **Priority Logic Maintainability Refactor** — The five-way branching logic (`if/elif/elif/else`) is becoming brittle for future features. [battery_logic.py:136]

@@ -53,6 +53,7 @@ development_status:
   epic-3: done
   3-1-fcr-dynamic-capacity-bounds-allocation: done
   3-2-battery-soc-sequential-mathematical-loop: done
+  3-3-intraday-price-arbitrage-logic: done
   epic-3-retrospective: optional
   epic-4: in-progress
   4-1-main-fuse-transmission-limits: done

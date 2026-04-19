@@ -112,3 +112,64 @@ def test_battery_loop_zero_net_load():
     assert p_charge[0] == 0.0
     assert p_discharge[0] == 0.0
     assert soc[0] == 0.0
+
+def test_battery_loop_price_arbitrage():
+    """Verify that battery charges during low prices even if net_load > 0."""
+    # 24 hours of constant 1kW load
+    net_load = np.ones(24)
+    # 24 hours of prices: first 6 are 10, others are 100
+    prices = np.full(24, 100.0)
+    prices[0:6] = 10.0
+    
+    p_arb_kw = 5.0
+    e_arb_kwh = 10.0
+    eta_rt = 1.0
+    
+    p_charge, p_discharge, soc = simulate_battery_loop(
+        net_load, p_arb_kw, e_arb_kwh, eta_rt, spot_prices=prices
+    )
+    
+    # Should charge in hour 0, 1 (reaching 10kWh capacity)
+    assert p_charge[0] == 5.0
+    assert p_charge[1] == 5.0
+    assert p_charge[2] == 0.0
+    assert soc[1] == 10.0
+    
+    # Should discharge in hour 6 (first hour not low-price, with load > 0)
+    assert p_discharge[6] == 1.0
+    assert soc[6] == 9.0
+
+def test_arbitrage_signals_robustness():
+    """Verify that arbitrage signals handle edge cases (empty, small, partial days)."""
+    from solar.models.battery_logic import get_arbitrage_signals
+    
+    # 1. Small input (<24h)
+    prices = np.array([10.0, 50.0, 100.0])
+    is_low, is_high = get_arbitrage_signals(prices, n_low=1, n_high=1)
+    assert is_low.tolist() == [True, False, False]
+    assert is_high.tolist() == [False, False, True]
+    
+    # 2. Empty input
+    is_low_e, is_high_e = get_arbitrage_signals(np.array([]))
+    assert len(is_low_e) == 0
+    
+    # 3. Exactly 24h
+    prices_24 = np.arange(24)
+    is_low_24, is_high_24 = get_arbitrage_signals(prices_24, n_low=1, n_high=1)
+    assert is_low_24[0] == True
+    assert is_high_24[23] == True
+    assert np.sum(is_low_24) == 1
+    
+    # 4. 25h (Full day + 1h)
+    prices_25 = np.zeros(25)
+    prices_25[24] = 100.0 # High price in the "tail" hour
+    is_low_25, is_high_25 = get_arbitrage_signals(prices_25, n_low=1, n_high=1)
+    assert is_high_25[24] == True
+
+def test_battery_loop_invalid_efficiency():
+    """Verify that battery loop fails on zero or negative efficiency."""
+    import pytest
+    from solar.models.battery_logic import simulate_battery_loop
+    
+    with pytest.raises(ValueError, match="round_trip_efficiency"):
+        simulate_battery_loop(np.zeros(10), 1.0, 1.0, 0.0)
