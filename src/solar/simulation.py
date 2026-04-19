@@ -4,6 +4,7 @@ import pandas as pd
 from solar.config import SimulationConfig
 from solar.models.pv_generation import calculate_solar_production
 from solar.models.battery_logic import allocate_battery_capacity, simulate_battery_loop
+from solar.models.grid_finance import calculate_grid_limit
 
 EXPECTED_HOURS = 8760
 
@@ -66,6 +67,10 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
         battery_allocation = allocate_battery_capacity(config.battery)
         p_fcr_kw = battery_allocation.p_fcr_kw
 
+    # 3.2. Grid Limits (Epic 4.1)
+    p_grid_max_kw = calculate_grid_limit(config.main_fuse_size_a)
+
+
     # 3.2. Solar Production
     if config.pv_strings:
         p_solar, net_load = calculate_solar_production(
@@ -126,6 +131,7 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
         "net_electricity_cost_sek": net_cost,
         "total_battery_charge_kwh": float(np.sum(p_charge)),
         "total_battery_discharge_kwh": float(np.sum(p_discharge)),
+        "p_grid_max_kw": p_grid_max_kw,
     }
 
     # 6. Memory footprint toggle

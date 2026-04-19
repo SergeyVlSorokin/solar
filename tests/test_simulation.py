@@ -42,6 +42,8 @@ def test_run_simulation_data_loading(mock_read_parquet):
     # 8760 * 2 * 1.18 = 20673.6
     expected = 8760 * 2 * 1.18
     assert result["total_money_spent"] == pytest.approx(expected)
+    assert "p_grid_max_kw" in result
+    assert result["p_grid_max_kw"] == pytest.approx(13.8564, rel=1e-3)
     # read_parquet must be called exactly 5 times (load + spot + 3 weather)
     assert mock_read_parquet.call_count == 5
 

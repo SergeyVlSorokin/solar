@@ -9,3 +9,8 @@
 
 - **`net_electricity_cost_sek` duplicates `total_money_spent`** — both keys hold the same scalar at baseline. Architecturally misleading for future epics when grid sell revenue is active. Address when Epic 5 revenue arrays are implemented. [simulation.py:39]
 - **`SimulationConfig` and strings accept negative values** — no `__post_init__` guard exists. Low risk at baseline but should be hardened before Battery epics. [config.py]
++
++## Deferred from: code review of 4-1-main-fuse-transmission-limits.md (2026-04-19)
++
++- **Hardcoded 400V grid voltage** — Formula in `grid_finance.py` is hardcoded for 400V. While specified in FR6, parameterizing it would improve future-proofing. [src/solar/models/grid_finance.py:11]
+

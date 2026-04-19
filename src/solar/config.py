@@ -31,6 +31,9 @@ class SimulationConfig:
     latitude: float = 59.3293
     longitude: float = 18.0686
     
+    # Grid (Epic 4)
+    main_fuse_size_a: int = 20
+    
     # Financial primitives (Defaulting to SE1 - Northern Sweden values)
     grid_transfer_fee_sek: float = 0.18
     energy_tax_sek: float = 0.264
