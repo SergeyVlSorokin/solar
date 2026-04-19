@@ -122,7 +122,7 @@ So that I can establish a control baseline representing my existing grid costs.
 **Acceptance Criteria:**
 
 **Given** the standardized Parquet input files
-**When** `simulation.run_simulation()` is invoked with `PV_Capacity=0` and `Battery_Capacity=0`
+**When** `simulation.run_simulation()` is invoked with no solar strings and `Battery_Capacity=0`
 **Then** the function skips physical equations and purely calculates "Grid Buy = Consumption"
 **And** calculates financial metrics (`total_money_spent`, etc.) using the granular VAT-inclusive formula from the updated PRD 5.6 (using default 0.18 Transfer + 0.264 Tax)
 **And** outputs a global metrics dictionary

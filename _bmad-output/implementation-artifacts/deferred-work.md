@@ -8,4 +8,4 @@
 ## Deferred from: code review of 1-3-execute-baseline-orchestration-loop (2026-04-17)
 
 - **`net_electricity_cost_sek` duplicates `total_money_spent`** — both keys hold the same scalar at baseline. Architecturally misleading for future epics when grid sell revenue is active. Address when Epic 5 revenue arrays are implemented. [simulation.py:39]
-- **`SimulationConfig` accepts negative capacity values** — no `__post_init__` guard exists. Low risk at baseline but should be hardened before PV/Battery epics with `if self.pv_capacity_kw < 0: raise ValueError(...)`. [config.py:4-7]
+- **`SimulationConfig` and strings accept negative values** — no `__post_init__` guard exists. Low risk at baseline but should be hardened before Battery epics. [config.py]

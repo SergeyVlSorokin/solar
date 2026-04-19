@@ -9,8 +9,7 @@ from solar.simulation import run_simulation
 
 
 def test_simulation_config_defaults():
-    config = SimulationConfig(pv_capacity_kw=0, battery_capacity_kwh=0)
-    assert config.pv_capacity_kw == 0
+    config = SimulationConfig(battery_capacity_kwh=0)
     assert config.battery_capacity_kwh == 0
     assert config.return_timeseries is False
 
@@ -27,11 +26,14 @@ def test_run_simulation_data_loading(mock_read_parquet):
             return load_df
         elif "spot_prices" in path_str and ".parquet" in path_str:
             return spot_df
+        elif any(x in path_str for x in ["ghi", "dni", "dhi"]) and ".parquet" in path_str:
+            col = "ghi" if "ghi" in path_str else ("dni" if "dni" in path_str else "dhi")
+            return pd.DataFrame({col: np.zeros(8760)})
         raise FileNotFoundError(f"{path} not mock matched")
 
     mock_read_parquet.side_effect = mock_read
 
-    config = SimulationConfig(pv_capacity_kw=0, battery_capacity_kwh=0)
+    config = SimulationConfig(battery_capacity_kwh=0)
     result = run_simulation(config, "mock_dir")
 
     assert "total_money_spent" in result
@@ -40,8 +42,8 @@ def test_run_simulation_data_loading(mock_read_parquet):
     # 8760 * 2 * 1.18 = 20673.6
     expected = 8760 * 2 * 1.18
     assert result["total_money_spent"] == pytest.approx(expected)
-    # read_parquet must be called exactly twice (load + spot)
-    assert mock_read_parquet.call_count == 2
+    # read_parquet must be called exactly 5 times (load + spot + 3 weather)
+    assert mock_read_parquet.call_count == 5
 
 
 @mock.patch("solar.simulation.pd.read_parquet")
@@ -55,18 +57,21 @@ def test_run_simulation_timeseries(mock_read_parquet):
             return load_df
         elif "spot_prices" in path_str and ".parquet" in path_str:
             return spot_df
+        elif any(x in path_str for x in ["ghi", "dni", "dhi"]) and ".parquet" in path_str:
+            col = "ghi" if "ghi" in path_str else ("dni" if "dni" in path_str else "dhi")
+            return pd.DataFrame({col: np.zeros(8760)})
         raise FileNotFoundError(f"{path} not mock matched")
 
     mock_read_parquet.side_effect = mock_read
 
-    config = SimulationConfig(pv_capacity_kw=0, battery_capacity_kwh=0, return_timeseries=True)
+    config = SimulationConfig(battery_capacity_kwh=0, return_timeseries=True)
     metrics, ts_df = run_simulation(config, "mock_dir")
 
     assert "total_money_spent" in metrics
     assert isinstance(ts_df, pd.DataFrame)
     assert len(ts_df) == 8760
     assert list(ts_df.columns) == [
-        "consumption", "grid_buy", "spot_prices", "hourly_spend", "hourly_earn_spot"
+        "consumption", "p_solar", "grid_buy", "grid_sell", "spot_prices", "hourly_spend", "hourly_earn_spot"
     ]
 
 
@@ -76,10 +81,12 @@ def test_financial_math_accuracy(mock_read_parquet):
     # Expected cost per kWh = (1.0 + 0.2 + 0.3) * 1.25 = 1.5 * 1.25 = 1.875
     load_df = pd.DataFrame({"consumption": np.ones(8760) * 10})
     spot_df = pd.DataFrame({"spot_prices": np.ones(8760) * 1.0})
-    mock_read_parquet.side_effect = [load_df, spot_df]
+    ghi_df = pd.DataFrame({"ghi": np.zeros(8760)})
+    dni_df = pd.DataFrame({"dni": np.zeros(8760)})
+    dhi_df = pd.DataFrame({"dhi": np.zeros(8760)})
+    mock_read_parquet.side_effect = [load_df, spot_df, ghi_df, dni_df, dhi_df]
 
     config = SimulationConfig(
-        pv_capacity_kw=0, 
         battery_capacity_kwh=0,
         grid_transfer_fee_sek=0.2,
         energy_tax_sek=0.3,

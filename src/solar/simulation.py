@@ -1,7 +1,8 @@
 import os
-import pandas as pd
 import numpy as np
+import pandas as pd
 from solar.config import SimulationConfig
+from solar.models.pv_generation import calculate_solar_production
 
 EXPECTED_HOURS = 8760
 
@@ -28,23 +29,44 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
         raise ValueError(
             f"load_profile.parquet has {len(consumption)} rows; expected {EXPECTED_HOURS}."
         )
-    if len(spot_prices) != EXPECTED_HOURS:
-        raise ValueError(
-            f"spot_prices.parquet has {len(spot_prices)} rows; expected {EXPECTED_HOURS}."
+    # 2. Load Weather Data (GHI, DNI, DHI)
+    # Support both standard names and raw PVGIS names (G(h), Gb(n), Gd(h))
+    def _extract_col(df, aliases):
+        for a in aliases:
+            if a in df.columns:
+                return df[a].values.flatten()
+        raise KeyError(f"Required columns {aliases} not found in {list(df.columns)}")
+
+    try:
+        ghi_path = os.path.join(parquet_dir, f"ghi_{year}.parquet")
+        dni_path = os.path.join(parquet_dir, f"dni_{year}.parquet")
+        dhi_path = os.path.join(parquet_dir, f"dhi_{year}.parquet")
+
+        ghi = _extract_col(pd.read_parquet(ghi_path), ["ghi", "G(h)"])
+        dni = _extract_col(pd.read_parquet(dni_path), ["dni", "Gb(n)"])
+        dhi = _extract_col(pd.read_parquet(dhi_path), ["dhi", "Gd(h)"])
+    except (FileNotFoundError, KeyError) as exc:
+        raise ValueError(f"Missing required weather data: {exc}") from exc
+
+    weather_data = {"ghi": ghi, "dni": dni, "dhi": dhi}
+
+    # 3. Physics & Logic Simulation
+    p_solar = np.zeros_like(consumption)
+    net_load = consumption # Default to 0-PV baseline
+
+    if config.pv_strings:
+        p_solar, net_load = calculate_solar_production(
+            latitude=config.latitude,
+            longitude=config.longitude,
+            weather_data=weather_data,
+            strings=config.pv_strings,
+            consumption=consumption
         )
 
-    # 2. Physics & Logic Simulation
-    # 0-Baseline handling
-    if config.pv_capacity_kw == 0 and config.battery_capacity_kwh == 0:
-        grid_buy = consumption
-        grid_sell = np.zeros_like(consumption)
-    else:
-        raise NotImplementedError(
-            "PV/Battery not yet implemented — set pv_capacity_kw=0 and "
-            "battery_capacity_kwh=0 for the baseline run."
-        )
-
-    # 3. Financial Metrics (Hourly vectors)
+    # 4. Grid Balancing (Simplified for Epic 2 - no battery or fuse constraints yet)
+    # Positive net_load means we buy from grid, negative means we sell
+    grid_buy = np.maximum(0, net_load)
+    grid_sell = np.maximum(0, -net_load)
     # Spend(t) = Grid_buy(t) * ((price_spot + transfer + tax) * (1 + vat))
     energy_stack = spot_prices + config.grid_transfer_fee_sek + config.energy_tax_sek
     hourly_spend = grid_buy * (energy_stack * (1 + config.vat_rate))
@@ -82,7 +104,9 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
     if config.return_timeseries:
         ts_df = pd.DataFrame({
             "consumption": consumption,
+            "p_solar": p_solar,
             "grid_buy": grid_buy,
+            "grid_sell": grid_sell,
             "spot_prices": spot_prices,
             "hourly_spend": hourly_spend,
             "hourly_earn_spot": hourly_earn_spot,

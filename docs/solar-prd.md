@@ -16,7 +16,7 @@ The architecture must be explicitly designed as a fast, deterministic baseline t
 
 * **Hourly Resolution:** 8,760 steps per simulation run. The model assumes a standard non-leap year (exactly 8760 hours). Inputs with 8784 hours must be truncated or rejected.  
 * **Vectorized Data:** Weather, prices, and load profiles processed as 1D arrays to maximize performance.  
-* **Missing Components:** Ability to set PV capacity or Battery capacity to 0 or None to calculate baselines.  
+* **Missing Components:** Ability to bypass PV (empty string list) or Battery capacity to 0 to calculate baselines.  
 * **Multiple PV Arrays:** Support for several solar strings with different orientations (tilt/azimuth).  
 * **Standard Load Profiling:** Approximation of hourly consumption curves from monthly aggregate data using a Standard Load Profile (SLP).  
 * **Fixed FCR Allocation:** A static parameter defining the percentage of battery power reserved for Ancillary Services (FCR) vs. Self-consumption/Arbitrage.  

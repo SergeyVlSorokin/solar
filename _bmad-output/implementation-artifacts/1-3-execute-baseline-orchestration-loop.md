@@ -13,7 +13,7 @@ so that I can establish a control baseline representing my existing grid costs.
 ## Acceptance Criteria
 
 1. **Given** the standardized Parquet input files
-   **When** `simulation.run_simulation()` is invoked with `PV_Capacity=0` and `Battery_Capacity=0`
+   **When** `simulation.run_simulation()` is invoked with `Battery_Capacity=0` and no solar strings
    **Then** the function skips physical equations and purely calculates "Grid Buy = Consumption"
 2. **And** outputs a global metrics dictionary (total_money_spent, etc.)
 3. **And** supports `return_timeseries=False` to bypass generating Pandas DataFrames for array preservation.
@@ -21,12 +21,12 @@ so that I can establish a control baseline representing my existing grid costs.
 ## Tasks / Subtasks
 
 - [x] Task 1 (AC: 1): Implement `config.py` Dataclasses
-  - [x] Create `SimulationConfig` dataclass in `src/solar/config.py` including `pv_capacity_kw`, `battery_capacity_kwh`, and `return_timeseries` parameters.
+  - [x] Create `SimulationConfig` dataclass in `src/solar/config.py` including `battery_capacity_kwh` and `return_timeseries` parameters.
 - [x] Task 2 (AC: 1): Implement `run_simulation` orchestration boundary
   - [x] Implement `src/solar/simulation.py` with `run_simulation(config, parquet_dir)` function.
   - [x] Read data from `data/processed/*.parquet` using pandas `read_parquet`, extracting exclusively as 1D numpy flatten arrays (`array.values.flatten()`).
 - [x] Task 3 (AC: 1, 2): Implement 0-Baseline mathematical orchestration
-  - [x] Skip PV/Battery loops explicitly via configuration toggles (i.e., if `pv_capacity_kw == 0`).
+  - [x] Skip PV/Battery loops explicitly via configuration toggles (i.e., if no strings).
   - [x] Equate `grid_buy` exactly to `consumption`.
   - [x] Compute minimal `total_money_spent` scalar summary (summing grid buy).
   - [x] Return the summary statistics wrapped in a metrics dictionary.
@@ -68,7 +68,7 @@ Gemini 3.1 Pro
 ### Debug Log References
 
 ### Completion Notes List
-- Successfully implemented `SimulationConfig` dataclass tracking capacity and return variables.
+- Successfully implemented `SimulationConfig` dataclass tracking strings and return variables.
 - Created robust TDD tests across the configuration and data pipeline handling mocking the dataframe load routines.
 - Built internal `run_simulation` orchestration bounds utilizing strict 1D numpy array math for minimal overhead footprint execution.
 - Added metric dictionary packaging scalar sums matching constraints.
@@ -89,4 +89,4 @@ Gemini 3.1 Pro
 - [x] [Review][Patch] No deterministic value assertion → added `pytest.approx(8760 * 2 * 0.5)` check [test_simulation.py:37] ✅ fixed
 - [x] [Review][Patch] Imports not grouped per PEP 8 → moved all imports to top of module [test_simulation.py:1-8] ✅ fixed
 - [x] [Review][Defer] `net_electricity_cost_sek` duplicates `total_money_spent` — both keys hold the same value at baseline; architecturally misleading for future epics. [simulation.py:39] — deferred, pre-existing design decision
-- [x] [Review][Defer] `SimulationConfig` accepts negative capacity values — no `__post_init__` validation guard. [config.py:4-7] — deferred, pre-existing
+- [x] [Review][Defer] `SimulationConfig` accepts negative values — no `__post_init__` validation guard. [config.py:4-7] — deferred, pre-existing
