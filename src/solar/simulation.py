@@ -4,7 +4,7 @@ import pandas as pd
 from solar.config import SimulationConfig
 from solar.models.pv_generation import calculate_solar_production
 from solar.models.battery_logic import allocate_battery_capacity, simulate_battery_loop
-from solar.models.grid_finance import calculate_grid_limit, calculate_grid_flows
+from solar.models.grid_finance import calculate_grid_limit, calculate_grid_flows, calculate_financials
 
 EXPECTED_HOURS = 8760
 
@@ -19,12 +19,14 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
     try:
         load_df = pd.read_parquet(os.path.join(parquet_dir, f"load_profile_{year}.parquet"))
         spot_df = pd.read_parquet(os.path.join(parquet_dir, f"spot_prices_se1_{year}.parquet"))
+        fcr_df = pd.read_parquet(os.path.join(parquet_dir, f"fcr_d_up_{year}.parquet"))
     except FileNotFoundError as exc:
         raise ValueError(f"Missing required parquet file: {exc}") from exc
 
     # Extract by named column as flattened 1D arrays (N,)
     consumption = load_df["consumption"].values.flatten()
     spot_prices = spot_df["spot_prices"].values.flatten()
+    fcr_prices = fcr_df["fcr_d_up_prices"].values.flatten()
 
     # Fast Assertions — enforce expected 8760-hour shape
     if len(consumption) != EXPECTED_HOURS:
@@ -34,6 +36,10 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
     if len(spot_prices) != len(consumption):
         raise ValueError(
             f"spot_prices length ({len(spot_prices)}) does not match consumption length ({len(consumption)})."
+        )
+    if len(fcr_prices) != len(consumption):
+        raise ValueError(
+            f"fcr_prices length ({len(fcr_prices)}) does not match consumption length ({len(consumption)})."
         )
     # 2. Load Weather Data (GHI, DNI, DHI)
     # Support both standard names and raw PVGIS names (G(h), Gb(n), Gd(h))
@@ -104,18 +110,28 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
         p_grid_max=p_grid_max_kw
     )
     
-    # Financials (Epic 5 placeholder - some logic already here)
-    # Spend(t) = Grid_buy(t) * ((price_spot + transfer + tax) * (1 + vat))
-    energy_stack = spot_prices + config.grid_transfer_fee_sek + config.energy_tax_sek
-    hourly_spend = grid_buy * (energy_stack * (1 + config.vat_rate))
+    # Financials (Epic 5.1 Modularized)
+    fin_results = calculate_financials(
+        grid_buy=grid_buy,
+        grid_sell=grid_sell,
+        p_fcr_kw=p_fcr_kw,
+        price_spot_hourly=spot_prices,
+        price_fcr_hourly=fcr_prices,
+        grid_transfer_fee_sek=config.grid_transfer_fee_sek,
+        energy_tax_sek=config.energy_tax_sek,
+        vat_rate=config.vat_rate,
+        utility_sell_compensation=config.utility_sell_compensation,
+        aggregator_fee_pct=config.aggregator_fee_pct
+    )
     
-    # Earn_spot(t) = Grid_sell(t) * (price_spot + utility_compensation)
-    hourly_earn_spot = grid_sell * (spot_prices + config.utility_sell_compensation)
+    hourly_spend = fin_results["hourly_spend"]
+    hourly_earn_spot = fin_results["hourly_earn_spot"]
+    hourly_revenue_fcr = fin_results["hourly_revenue_fcr"]
 
     # 5. Yearly Aggregations
     total_money_spent = float(np.sum(hourly_spend))
     total_money_earned_spot = float(np.sum(hourly_earn_spot))
-    total_money_earned_fcr = 0.0 # Bypassed until Story 5.1
+    total_money_earned_fcr = float(np.sum(hourly_revenue_fcr))
 
     # Skattereduktion (Tax Credit)
     # Capped at min(exported_kwh, imported_kwh, 30,000 kWh)
@@ -134,6 +150,7 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
     metrics = {
         "total_money_spent": total_money_spent,
         "total_money_earned_spot_sek": total_money_earned_spot,
+        "total_money_earned_fcr_sek": total_money_earned_fcr,
         "total_tax_credit_sek": total_tax_credit_sek,
         "net_electricity_cost_sek": net_cost,
         "total_battery_charge_kwh": float(np.sum(p_charge)),
@@ -159,6 +176,7 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
             "spot_prices": spot_prices,
             "hourly_spend": hourly_spend,
             "hourly_earn_spot": hourly_earn_spot,
+            "hourly_revenue_fcr": hourly_revenue_fcr,
         })
         return metrics, ts_df
 

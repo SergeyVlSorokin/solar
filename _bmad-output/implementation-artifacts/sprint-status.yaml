@@ -59,7 +59,7 @@ development_status:
   4-1-main-fuse-transmission-limits: done
   4-2-grid-flow-and-curtailment-vector-truncation: done
   epic-4-retrospective: optional
-  epic-5: backlog
-  5-1-spot-market-and-aggregator-revenue-arrays: backlog
+  epic-5: in-progress
+  5-1-spot-market-and-aggregator-revenue-arrays: done
   5-2-skattereduktion-tax-rebate-dynamic-capping: backlog
   epic-5-retrospective: optional
