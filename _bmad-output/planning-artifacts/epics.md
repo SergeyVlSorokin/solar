@@ -124,7 +124,8 @@ So that I can establish a control baseline representing my existing grid costs.
 **Given** the standardized Parquet input files
 **When** `simulation.run_simulation()` is invoked with `PV_Capacity=0` and `Battery_Capacity=0`
 **Then** the function skips physical equations and purely calculates "Grid Buy = Consumption"
-**And** outputs a global metrics dictionary (total_money_spent, etc.)
+**And** calculates financial metrics (`total_money_spent`, etc.) using the granular VAT-inclusive formula from the updated PRD 5.6 (using default 0.18 Transfer + 0.264 Tax)
+**And** outputs a global metrics dictionary
 **And** supports `return_timeseries=False` to bypass generating Pandas DataFrames for array preservation.
 
 ## Epic 2: Solar Array Generation Physics

@@ -22,9 +22,10 @@ def test_run_simulation_data_loading(mock_read_parquet):
     spot_df = pd.DataFrame({"spot_prices": np.ones(8760) * 0.5})
 
     def mock_read(path, **kwargs):
-        if "load_profile.parquet" in str(path):
+        path_str = str(path)
+        if "load_profile" in path_str and ".parquet" in path_str:
             return load_df
-        elif "spot_prices.parquet" in str(path):
+        elif "spot_prices" in path_str and ".parquet" in path_str:
             return spot_df
         raise FileNotFoundError(f"{path} not mock matched")
 
@@ -34,8 +35,11 @@ def test_run_simulation_data_loading(mock_read_parquet):
     result = run_simulation(config, "mock_dir")
 
     assert "total_money_spent" in result
-    # Deterministic value: 8760 hours × 2 kWh × 0.5 SEK/kWh = 8760.0 SEK
-    assert result["total_money_spent"] == pytest.approx(8760 * 2 * 0.5)
+    # Formula: Hours(8760) * Load(2) * ((Spot(0.5) + Trans(0.18) + Tax(0.264)) * VAT(1.25))
+    # (0.5 + 0.18 + 0.264) * 1.25 = 1.18
+    # 8760 * 2 * 1.18 = 20673.6
+    expected = 8760 * 2 * 1.18
+    assert result["total_money_spent"] == pytest.approx(expected)
     # read_parquet must be called exactly twice (load + spot)
     assert mock_read_parquet.call_count == 2
 
@@ -46,9 +50,10 @@ def test_run_simulation_timeseries(mock_read_parquet):
     spot_df = pd.DataFrame({"spot_prices": np.ones(8760) * 0.5})
 
     def mock_read(path, **kwargs):
-        if "load_profile.parquet" in str(path):
+        path_str = str(path)
+        if "load_profile" in path_str and ".parquet" in path_str:
             return load_df
-        elif "spot_prices.parquet" in str(path):
+        elif "spot_prices" in path_str and ".parquet" in path_str:
             return spot_df
         raise FileNotFoundError(f"{path} not mock matched")
 
@@ -60,4 +65,29 @@ def test_run_simulation_timeseries(mock_read_parquet):
     assert "total_money_spent" in metrics
     assert isinstance(ts_df, pd.DataFrame)
     assert len(ts_df) == 8760
-    assert list(ts_df.columns) == ["consumption", "grid_buy", "spot_prices"]
+    assert list(ts_df.columns) == [
+        "consumption", "grid_buy", "spot_prices", "hourly_spend", "hourly_earn_spot"
+    ]
+
+
+@mock.patch("solar.simulation.pd.read_parquet")
+def test_financial_math_accuracy(mock_read_parquet):
+    # Test specific financial stack: Spot=1.0, Trans=0.2, Tax=0.3, VAT=0.25 (1.25x)
+    # Expected cost per kWh = (1.0 + 0.2 + 0.3) * 1.25 = 1.5 * 1.25 = 1.875
+    load_df = pd.DataFrame({"consumption": np.ones(8760) * 10})
+    spot_df = pd.DataFrame({"spot_prices": np.ones(8760) * 1.0})
+    mock_read_parquet.side_effect = [load_df, spot_df]
+
+    config = SimulationConfig(
+        pv_capacity_kw=0, 
+        battery_capacity_kwh=0,
+        grid_transfer_fee_sek=0.2,
+        energy_tax_sek=0.3,
+        vat_rate=0.25
+    )
+    result = run_simulation(config, "mock_dir")
+
+    expected_total = 8760 * 10 * 1.875
+    assert result["total_money_spent"] == pytest.approx(expected_total)
+    assert result["net_electricity_cost_sek"] == pytest.approx(expected_total)
+    assert result["total_tax_credit_sek"] == 0.0 # No export in baseline

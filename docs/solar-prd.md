@@ -80,7 +80,9 @@ If dictionary is missing/empty, Battery logic is bypassed.
 * price\_fcr\_hourly: Array of 8760 FCR-D clearing prices (SEK/MW/h).  
 * aggregator\_fee\_pct: Revenue cut taken by aggregator (Default: 0.20).  
 * aggregator\_flat\_fee\_yearly: Flat annual subscription/hardware fee charged by the aggregator (Default: 0 SEK).
-* grid\_buy\_fee: Energy tax \+ grid transfer fee \+ VAT (Default: 0.80 SEK/kWh).  
+* grid_transfer_fee_sek: Variable grid transfer fee (Överföring) (Default: 0.18 SEK/kWh).
+* energy_tax_sek: Statutory electricity tax (Energiskatt) (Default: 0.264 SEK/kWh).
+* vat_rate: Value Added Tax (VAT/Moms) applied to energy components (Default: 0.25).
 * utility\_sell\_compensation: Flat compensation from utility grid for sold electricity (Default: 0.05 SEK/kWh).
 
 ## **5\. Mathematical Models**
@@ -163,7 +165,8 @@ Unmet\_load(t) \= 0
 
 **Cash Flows (SEK):**
 
-Spend(t) \= Grid\_buy(t) \* ((price\_spot\_hourly(t) \* 1.25) \+ grid\_buy\_fee)  
+Spend(t) = Grid_buy(t) * ((price_spot_hourly(t) + grid_transfer_fee_sek + energy_tax_sek) * (1 + vat_rate))
+  
 Earn\_spot(t) \= Grid\_sell(t) \* (price\_spot\_hourly(t) \+ utility\_sell\_compensation)  
 Rev\_FCR(t) \= (P\_FCR / 1000\) \* price\_fcr\_hourly(t) \* (1 \- aggregator\_fee\_pct)
 
@@ -186,9 +189,16 @@ The model must output a results object/dictionary containing the metrics below. 
 * net\_electricity\_cost\_sek: total\_money\_spent\_sek \- (total\_money\_earned\_spot\_sek \+ total\_money\_earned\_fcr\_sek \+ total\_tax\_credit\_sek) \+ aggregator\_flat\_fee\_yearly
 * *(Optional but desired)*: Provide the net\_electricity\_cost\_sek of the baseline (0 PV, 0 Battery) to easily calculate annual savings.
 
-### **6.2. Daily Statistics**
+### **6.2. Analytical Timeseries Data**
 
-A Pandas DataFrame (365 rows) aggregated from the hourly data using df.resample('D').sum() for the following columns. Note: Pandas instantiation and resampling is a severe computational bottleneck. This step must be strictly bypassed (`return_timeseries=False`) during Monte Carlo loops and only processed for single-run visualizations.
+When `return_timeseries=True`, the model returns a Pandas DataFrame with 8,760 rows (hourly).
+
+**Schema:**
+* `consumption`: Hourly energy demand (kWh)
+* `grid_buy`: Hourly energy imported from grid (kWh)
+* `spot_prices`: Hourly Nord Pool spot price (SEK/kWh)
+* `hourly_spend`: Hourly VAT-inclusive expenditure (SEK)
+* `hourly_earn_spot`: Hourly revenue from grid export (SEK)
 
 * solar\_irradiation\_kwh\_m2  
 * solar\_power\_produced\_kwh  

@@ -44,13 +44,38 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
             "battery_capacity_kwh=0 for the baseline run."
         )
 
-    # 3. Financial Metrics
-    total_money_spent = float(np.sum(grid_buy * spot_prices))
+    # 3. Financial Metrics (Hourly vectors)
+    # Spend(t) = Grid_buy(t) * ((price_spot + transfer + tax) * (1 + vat))
+    energy_stack = spot_prices + config.grid_transfer_fee_sek + config.energy_tax_sek
+    hourly_spend = grid_buy * (energy_stack * (1 + config.vat_rate))
+    
+    # Earn_spot(t) = Grid_sell(t) * (price_spot + utility_compensation)
+    hourly_earn_spot = grid_sell * (spot_prices + config.utility_sell_compensation)
+
+    # 4. Yearly Aggregations
+    total_money_spent = float(np.sum(hourly_spend))
+    total_money_earned_spot = float(np.sum(hourly_earn_spot))
+    total_money_earned_fcr = 0.0 # Bypassed in baseline
+
+    # Skattereduktion (Tax Credit)
+    # Capped at min(exported_kwh, imported_kwh, 30,000 kWh)
+    total_grid_buy_kwh = float(np.sum(grid_buy))
+    total_grid_sell_kwh = float(np.sum(grid_sell))
+    max_tax_kwh = min(total_grid_sell_kwh, total_grid_buy_kwh, 30000.0)
+    total_tax_credit_sek = max_tax_kwh * config.tax_credit_rate
+
+    # Net Electricity Cost (SEK)
+    net_cost = (
+        total_money_spent
+        - (total_money_earned_spot + total_money_earned_fcr + total_tax_credit_sek)
+        + config.aggregator_flat_fee_yearly
+    )
 
     metrics = {
         "total_money_spent": total_money_spent,
-        "net_electricity_cost_sek": total_money_spent,
-        "total_money_earned_spot_sek": 0.0,
+        "total_money_earned_spot_sek": total_money_earned_spot,
+        "total_tax_credit_sek": total_tax_credit_sek,
+        "net_electricity_cost_sek": net_cost,
     }
 
     # 4. Memory footprint toggle
@@ -59,6 +84,8 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
             "consumption": consumption,
             "grid_buy": grid_buy,
             "spot_prices": spot_prices,
+            "hourly_spend": hourly_spend,
+            "hourly_earn_spot": hourly_earn_spot,
         })
         return metrics, ts_df
 

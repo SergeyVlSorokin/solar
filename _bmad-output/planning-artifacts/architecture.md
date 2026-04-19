@@ -139,7 +139,7 @@ Strong data-versioning practices and explicit configuration management.
 6. Wrap in the Main Simulation execution function.
 
 **Cross-Component Dependencies:**
-The choice of Parquet means the Data Loader component must perfectly handle standardizing Timezones and casting arrays to tight memory types (e.g., `float32` instead of `float64` where precision allows) before passing strings into the pure physics functions.
+The choice of Parquet means the Data Loader component must perfectly handle standardizing Timezones and casting arrays to tight memory types. Additionally, the Financial Model now requires mandatory granular parameters (`vat_rate`, `grid_transfer_fee_sek`, `energy_tax_sek`) to be defined in the orchestration layer to ensure baseline economic accuracy.
 
 ## Implementation Patterns & Consistency Rules
 
@@ -175,7 +175,7 @@ The choice of Parquet means the Data Loader component must perfectly handle stan
 ### Communication Patterns
 
 **Function and Class Standards:**
-- **Dataclass Configurations**: Do not pass dozens of scalar arguments into functions positionally. All static simulation constraints (e.g., battery size, efficiency) must be bundled into a Python `@dataclass`.
+- **Dataclass Configurations**: Do not pass dozens of scalar arguments into functions positionally. All static simulation constraints (e.g., battery size, efficiency) and financial primitives (`vat_rate`, `grid_transfer_fee_sek`, `energy_tax_sek`, `utility_sell_compensation`) must be bundled into a Python `@dataclass`.
 - **Pure Functions**: Physics modules must not mutate their input arrays in-place (no `A += B`). They must return new arrays or scalars to ensure stateless deterministic testing.
 
 ### Process Patterns
@@ -266,7 +266,7 @@ solar/
 
 **The Orchestration Boundary (`src/solar/simulation.py`):**
 - **Responsibility:** The module exported to external users/notebooks. It coordinates the execution pipeline (Load Data -> Generate Solar -> Flow Battery -> Assess Grid -> Calculate Tax).
-- **Boundary Restriction:** It enforces the `return_timeseries=False` Monte Carlo memory constraint logic before yielding results.
+- **Boundary Restriction:** It enforces the `return_timeseries=False` Monte Carlo memory constraint logic. When `True`, it returns a populated DataFrame including `consumption`, `grid_buy`, `spot_prices`, `hourly_spend`, and `hourly_earn_spot`.
 
 ### Integration Points
 
