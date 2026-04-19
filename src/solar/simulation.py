@@ -4,7 +4,12 @@ import pandas as pd
 from solar.config import SimulationConfig
 from solar.models.pv_generation import calculate_solar_production
 from solar.models.battery_logic import allocate_battery_capacity, simulate_battery_loop
-from solar.models.grid_finance import calculate_grid_limit, calculate_grid_flows, calculate_financials
+from solar.models.grid_finance import (
+    calculate_grid_limit, 
+    calculate_grid_flows, 
+    calculate_financials,
+    calculate_yearly_metrics
+)
 
 EXPECTED_HOURS = 8760
 
@@ -129,36 +134,26 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
     hourly_revenue_fcr = fin_results["hourly_revenue_fcr"]
 
     # 5. Yearly Aggregations
-    total_money_spent = float(np.sum(hourly_spend))
-    total_money_earned_spot = float(np.sum(hourly_earn_spot))
-    total_money_earned_fcr = float(np.sum(hourly_revenue_fcr))
-
-    # Skattereduktion (Tax Credit)
-    # Capped at min(exported_kwh, imported_kwh, 30,000 kWh)
-    total_grid_buy_kwh = float(np.sum(grid_buy))
-    total_grid_sell_kwh = float(np.sum(grid_sell))
-    max_tax_kwh = min(total_grid_sell_kwh, total_grid_buy_kwh, 30000.0)
-    total_tax_credit_sek = max_tax_kwh * config.tax_credit_rate
-
-    # Net Electricity Cost (SEK)
-    net_cost = (
-        total_money_spent
-        - (total_money_earned_spot + total_money_earned_fcr + total_tax_credit_sek)
-        + config.aggregator_flat_fee_yearly
+    # Final metrics calculation (Epic 5.2 modularized)
+    yearly_fin = calculate_yearly_metrics(
+        total_spend_sek=float(np.sum(hourly_spend)),
+        total_earn_spot_sek=float(np.sum(hourly_earn_spot)),
+        total_earn_fcr_sek=float(np.sum(hourly_revenue_fcr)),
+        total_grid_buy_kwh=float(np.sum(grid_buy)),
+        total_grid_sell_kwh=float(np.sum(grid_sell)),
+        tax_credit_rate=config.tax_credit_rate,
+        tax_credit_limit_kwh=config.tax_credit_limit_kwh,
+        aggregator_flat_fee_yearly=config.aggregator_flat_fee_yearly
     )
-
+    
     metrics = {
-        "total_money_spent": total_money_spent,
-        "total_money_earned_spot_sek": total_money_earned_spot,
-        "total_money_earned_fcr_sek": total_money_earned_fcr,
-        "total_tax_credit_sek": total_tax_credit_sek,
-        "net_electricity_cost_sek": net_cost,
         "total_battery_charge_kwh": float(np.sum(p_charge)),
         "total_battery_discharge_kwh": float(np.sum(p_discharge)),
         "p_grid_max_kw": p_grid_max_kw,
         "total_unmet_load_kwh": float(np.sum(unmet_load)),
         "total_curtailed_kwh": float(np.sum(curtailed)),
     }
+    metrics.update(yearly_fin)
 
     # 6. Memory footprint toggle
     if config.return_timeseries:
