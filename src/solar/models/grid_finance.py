@@ -106,12 +106,10 @@ def calculate_yearly_metrics(
     total_earn_fcr_sek: float,
     total_grid_buy_kwh: float,
     total_grid_sell_kwh: float,
-    tax_credit_rate: float,
-    tax_credit_limit_kwh: float,
     aggregator_flat_fee_yearly: float
 ) -> dict[str, float]:
     """
-    Calculate global yearly summary metrics including tax rebates (Epic 5.2).
+    Calculate global yearly summary metrics.
 
     Args:
         total_spend_sek: Total VAT-inclusive money spent on grid imports.
@@ -119,8 +117,6 @@ def calculate_yearly_metrics(
         total_earn_fcr_sek: Total revenue from FCR aggregator (after fees).
         total_grid_buy_kwh: Total energy imported from the grid (kWh).
         total_grid_sell_kwh: Total energy exported to the grid (kWh).
-        tax_credit_rate: Rebate SEK per kWh (e.g., 0.60).
-        tax_credit_limit_kwh: Legal cap on creditable energy (e.g., 30000).
         aggregator_flat_fee_yearly: Fixed annual fee (SEK) added to net cost.
 
     Returns:
@@ -133,18 +129,14 @@ def calculate_yearly_metrics(
     spend = float(np.nan_to_num(total_spend_sek))
     earn_spot = float(np.nan_to_num(total_earn_spot_sek))
     earn_fcr = float(np.nan_to_num(total_earn_fcr_sek))
-    rate = max(0.0, float(tax_credit_rate))
-    limit = max(0.0, float(tax_credit_limit_kwh))
     flat_fee = float(aggregator_flat_fee_yearly)
 
-    # 1. Calculate Tax Credit (Skattereduktion)
-    # Capped at min(exported_kwh, imported_kwh, limit_kwh)
-    max_tax_kwh = min(sell, buy, limit)
-    total_tax_credit_sek = max_tax_kwh * rate
+    # 1. Tax Credit (Skattereduktion) is no longer available. Hardcode to 0.0 to prevent downstream breaks.
+    total_tax_credit_sek = 0.0
 
     # 2. Net Electricity Cost (SEK)
-    # Formula: Cost = Spend - (Spot_Earn + FCR_Earn + Tax_Credit) + Flat_Fee
-    net_cost = spend - (earn_spot + earn_fcr + total_tax_credit_sek) + flat_fee
+    # Formula: Cost = Spend - (Spot_Earn + FCR_Earn) + Flat_Fee
+    net_cost = spend - (earn_spot + earn_fcr) + flat_fee
 
     return {
         "total_tax_credit_sek": total_tax_credit_sek,

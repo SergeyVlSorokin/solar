@@ -15,6 +15,7 @@ class BatteryConfig:
     max_power_kw: float
     round_trip_efficiency: float
     fcr_allocation_pct: float
+    use_linear_optimizer: bool = True
 
 
 @dataclass
@@ -39,7 +40,5 @@ class SimulationConfig:
     energy_tax_sek: float = 0.264
     vat_rate: float = 0.25
     utility_sell_compensation: float = 0.05
-    tax_credit_rate: float = 0.60
-    tax_credit_limit_kwh: float = 30000.0
     aggregator_fee_pct: float = 0.20
     aggregator_flat_fee_yearly: float = 0.0

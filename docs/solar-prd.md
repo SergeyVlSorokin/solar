@@ -133,25 +133,20 @@ P\_FCR \= P\_max \* FCR\_pct
 P\_arb \= P\_max \- P\_FCR  
 E\_arb \= E\_max \* (1 \- FCR\_pct)
 
-**Sequential Hourly Balance (The Battery Loop):**
+**Linear Programming Optimizer (The Battery Loop):**
 
-Let eta\_c \= eta\_d \= sqrt(eta\_rt)
+The battery schedule is optimized over the full 8760-hour horizon using a Linear Programming (LP) model with perfect foresight, mirroring modern Energy Management Systems (EMS) like Ferroamp or CheckWatt.
 
-* **If Net(t) \< 0 (Excess Solar):**
+**Objective Function:**
+Minimize total cost: Sum(Grid_buy(t) * Cost_buy(t) - Grid_sell(t) * Cost_sell(t))
 
-P\_charge(t) \= min(abs(Net(t)), P\_arb, (E\_arb \- SOC(t-1)) / eta\_c)  
-P\_discharge(t) \= 0
+**Variables per hour (t):**
+* P_charge(t), P_discharge(t), SOC(t), Grid_buy(t), Grid_sell(t)
 
-* **If Net(t) \> 0 (Need Power):**
-
-P\_discharge(t) \= min(Net(t), P\_arb, SOC(t-1) \* eta\_d)  
-P\_charge(t) \= 0
-
-**SOC Update:**
-
-Keep SOC strictly within \[0, E\_arb\] bounds.
-
-SOC(t) \= SOC(t-1) \+ (P\_charge(t) \* eta\_c) \- (P\_discharge(t) / eta\_d)
+**Constraints:**
+1. Power Balance: Grid_buy(t) - Grid_sell(t) - P_charge(t) + P_discharge(t) = Net(t)
+2. SOC Update: SOC(t) = SOC(t-1) + (P_charge(t) * eta_c) - (P_discharge(t) / eta_d)
+3. Bounds: 0 <= P_charge <= P_arb, 0 <= P_discharge <= P_arb, 0 <= SOC <= E_arb
 
 ### **5.5. Grid Balancing Layer (Vectorized Post-Loop)**
 
@@ -180,8 +175,7 @@ Earn\_spot(t) \= Grid\_sell(t) \* (price\_spot\_hourly(t) \+ utility\_sell\_comp
 Rev\_FCR(t) \= (P\_FCR / 1000\) \* price\_fcr\_hourly(t) \* (1 \- aggregator\_fee\_pct)
 
 **Post-Loop Tax Credit (Skattereduktion):**
-Max_tax_kwh = min(sum(Grid_sell), sum(Grid_buy), 30000)
-Total_tax_credit_sek = Max_tax_kwh * 0.60
+*Note: The 60 öre tax rebate was dropped by the government and is no longer available. Tax credit calculations are removed from the model.*
 
 ## **6\. Output Requirements**
 
@@ -194,8 +188,7 @@ The model must output a results object/dictionary containing the metrics below. 
 * total\_money\_earned\_fcr\_sek: sum of Rev\_FCR(t)  
 * total\_curtailed\_solar\_kwh: sum of Curtailed(t)  
 * total\_unmet\_load\_kwh: sum of Unmet\_load(t)
-* total\_tax\_credit\_sek: Total_tax_credit_sek from Skattereduktion
-* net\_electricity\_cost\_sek: total\_money\_spent\_sek \- (total\_money\_earned\_spot\_sek \+ total\_money\_earned\_fcr\_sek \+ total\_tax\_credit\_sek) \+ aggregator\_flat\_fee\_yearly
+* net\_electricity\_cost\_sek: total\_money\_spent\_sek \- (total\_money\_earned\_spot\_sek \+ total\_money\_earned\_fcr\_sek) \+ aggregator\_flat\_fee\_yearly
 * *(Optional but desired)*: Provide the net\_electricity\_cost\_sek of the baseline (0 PV, 0 Battery) to easily calculate annual savings.
 
 ### **6.2. Analytical Timeseries Data**

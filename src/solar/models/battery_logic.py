@@ -1,4 +1,6 @@
 import numpy as np
+import scipy.sparse as sp
+from scipy.optimize import linprog
 from dataclasses import dataclass
 from typing import Tuple, Optional
 from solar.config import BatteryConfig
@@ -98,6 +100,71 @@ def get_arbitrage_signals(prices: np.ndarray, n_low: int = 6, n_high: int = 6) -
     
     return is_low, is_high
 
+def optimize_battery_loop(
+    net_load: np.ndarray,
+    p_arb_kw: float,
+    e_arb_kwh: float,
+    eta_rt: float,
+    cost_buy: np.ndarray,
+    cost_sell: np.ndarray,
+    p_grid_max: float = 14.0
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Linear Programming (LP) optimization for battery schedule with perfect foresight.
+    """
+    num_steps = len(net_load)
+    eta_eff = np.sqrt(eta_rt)
+    
+    # Variables: 0..N-1: GridBuy, N..2N-1: GridSell, 2N..3N-1: P_Charge, 3N..4N-1: P_Discharge, 4N..5N-1: SOC
+    c = np.zeros(5 * num_steps)
+    c[0:num_steps] = cost_buy
+    c[num_steps:2*num_steps] = -cost_sell
+    
+    # Bounds
+    bounds = []
+    for _ in range(num_steps): bounds.append((0, p_grid_max))      # GridBuy
+    for _ in range(num_steps): bounds.append((0, p_grid_max))      # GridSell
+    for _ in range(num_steps): bounds.append((0, p_arb_kw))        # P_charge
+    for _ in range(num_steps): bounds.append((0, p_arb_kw))        # P_discharge
+    for _ in range(num_steps): bounds.append((0, e_arb_kwh))       # SOC
+    
+    # A_eq
+    rows = []
+    cols = []
+    data = []
+    b_eq = np.zeros(2 * num_steps)
+    
+    N = num_steps
+    for t in range(N):
+        # 1. Power balance: Buy - Sell - Charge + Discharge = NetLoad
+        rows.extend([t, t, t, t])
+        cols.extend([t, N+t, 2*N+t, 3*N+t])
+        data.extend([1.0, -1.0, -1.0, 1.0])
+        b_eq[t] = net_load[t]
+        
+        # 2. SOC update: SOC[t] - Charge*eta + Discharge/eta - SOC[t-1] = 0
+        rows.extend([N+t, N+t, N+t])
+        cols.extend([4*N+t, 2*N+t, 3*N+t])
+        data.extend([1.0, -eta_eff, 1.0/eta_eff])
+        if t > 0:
+            rows.append(N+t)
+            cols.append(4*N+t-1)
+            data.append(-1.0)
+            
+    A_eq = sp.csr_matrix((data, (rows, cols)), shape=(2*N, 5*N))
+    
+    res = linprog(c, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+    
+    if not res.success:
+        raise RuntimeError(f"Optimizer failed: {res.message}")
+        
+    x = res.x
+    p_charge = x[2*N:3*N]
+    p_discharge = x[3*N:4*N]
+    soc = x[4*N:5*N]
+    
+    return p_charge, p_discharge, soc
+
 def simulate_battery_loop(
     net_load: np.ndarray,
     p_arb_kw: float,
@@ -151,26 +218,31 @@ def simulate_battery_loop(
         current_net = net_load[t]
         prev_soc = soc[t]
         
-        # Priority 1: Solar Self-Consumption (Charge if excess solar)
-        if current_net < 0:
-            p_charge[t] = min(abs(current_net), p_arb_kw, (e_arb_kwh - prev_soc) / eta_eff)
+        max_discharge_p = min(p_arb_kw, prev_soc * eta_eff)
+        max_charge_p = min(p_arb_kw, (e_arb_kwh - prev_soc) / eta_eff)
+
+        # 1. Price Arbitrage Charge (Buy low from grid or solar)
+        if is_low[t]:
+            p_charge[t] = max_charge_p
             soc[t+1] = prev_soc + (p_charge[t] * eta_eff)
-            
-        # Priority 2: Price Arbitrage (Charge if price is low, even if net_load > 0)
-        elif is_low[t]:
-            # Note: We still honor p_arb_kw and e_arb_kwh
-            p_charge[t] = min(p_arb_kw, (e_arb_kwh - prev_soc) / eta_eff)
-            soc[t+1] = prev_soc + (p_charge[t] * eta_eff)
-            
-        # Priority 3: Displacement/Discharge (Need power OR price is high)
-        elif current_net > 0 or is_high[t]:
-            # P_discharge targets either the load or max battery power
-            target_discharge = current_net if (current_net > 0 and not is_high[t]) else p_arb_kw
-            p_discharge[t] = min(target_discharge, p_arb_kw, prev_soc * eta_eff)
+
+        # 2. Price Arbitrage Export (Sell high AND cover load)
+        elif is_high[t]:
+            p_discharge[t] = max_discharge_p
             soc[t+1] = prev_soc - (p_discharge[t] / eta_eff)
-            
-        else:  # Neutral
-            soc[t+1] = prev_soc
+
+        # 3. Neutral hours (Maximize Self-Consumption)
+        else:
+            if current_net < 0:
+                # Excess solar -> Charge battery
+                p_charge[t] = min(abs(current_net), max_charge_p)
+                soc[t+1] = prev_soc + (p_charge[t] * eta_eff)
+            elif current_net > 0:
+                # House needs power -> Discharge to cover load ONLY
+                p_discharge[t] = min(current_net, max_discharge_p)
+                soc[t+1] = prev_soc - (p_discharge[t] / eta_eff)
+            else:
+                soc[t+1] = prev_soc
             
     # Return arrays of length num_steps (dropping initial SOC for alignment)
     return p_charge, p_discharge, soc[1:]

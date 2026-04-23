@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from solar.config import SimulationConfig
 from solar.models.pv_generation import calculate_solar_production
-from solar.models.battery_logic import allocate_battery_capacity, simulate_battery_loop
+from solar.models.battery_logic import allocate_battery_capacity, simulate_battery_loop, optimize_battery_loop
 from solar.models.grid_finance import (
     calculate_grid_limit, 
     calculate_grid_flows, 
@@ -96,15 +96,29 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
             consumption=consumption
         )
 
-    # 3.3. Sequential Battery Loop
+    # 3.3. Battery Loop
     if config.battery and battery_allocation:
-        p_charge, p_discharge, soc_kwh = simulate_battery_loop(
-            net_load=net_load,
-            p_arb_kw=battery_allocation.p_arb_kw,
-            e_arb_kwh=battery_allocation.e_arb_kwh,
-            eta_rt=config.battery.round_trip_efficiency,
-            spot_prices=spot_prices
-        )
+        if config.battery.use_linear_optimizer:
+            cost_buy = (spot_prices + config.grid_transfer_fee_sek + config.energy_tax_sek) * (1 + config.vat_rate)
+            cost_sell = spot_prices + config.utility_sell_compensation
+            
+            p_charge, p_discharge, soc_kwh = optimize_battery_loop(
+                net_load=net_load,
+                p_arb_kw=battery_allocation.p_arb_kw,
+                e_arb_kwh=battery_allocation.e_arb_kwh,
+                eta_rt=config.battery.round_trip_efficiency,
+                cost_buy=cost_buy,
+                cost_sell=cost_sell,
+                p_grid_max=p_grid_max_kw
+            )
+        else:
+            p_charge, p_discharge, soc_kwh = simulate_battery_loop(
+                net_load=net_load,
+                p_arb_kw=battery_allocation.p_arb_kw,
+                e_arb_kwh=battery_allocation.e_arb_kwh,
+                eta_rt=config.battery.round_trip_efficiency,
+                spot_prices=spot_prices
+            )
 
     # 4. Grid Balancing
     # Residual(t) = Net(t) + P_charge(t) - P_discharge(t)
@@ -141,8 +155,6 @@ def run_simulation(config: SimulationConfig, parquet_dir: str, year: str = "2025
         total_earn_fcr_sek=float(np.sum(hourly_revenue_fcr)),
         total_grid_buy_kwh=float(np.sum(grid_buy)),
         total_grid_sell_kwh=float(np.sum(grid_sell)),
-        tax_credit_rate=config.tax_credit_rate,
-        tax_credit_limit_kwh=config.tax_credit_limit_kwh,
         aggregator_flat_fee_yearly=config.aggregator_flat_fee_yearly
     )
     

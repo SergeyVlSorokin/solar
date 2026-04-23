@@ -31,5 +31,6 @@ Hourly simulation model to assess the economic feasibility of residential solar 
 
 - Hourly resolution (8,760 hours/year).
 - Vectorized performance (Numpy/Pandas).
-- Swedish market economics (Nord Pool prices, Skattereduktion).
+- Swedish market economics (Nord Pool prices, retail tax & grid fees).
+- Linear Programming (LP) battery optimization with perfect foresight.
 - FCR-D Ancillary Services modeling.

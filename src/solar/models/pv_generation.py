@@ -29,7 +29,7 @@ def calculate_solar_production(
     times = pd.date_range(
         start="2025-01-01 00:00:00",
         periods=len(consumption),
-        freq="H",
+        freq="h",
         tz="Europe/Stockholm"
     )
     

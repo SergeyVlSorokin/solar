@@ -114,30 +114,40 @@ def test_battery_loop_zero_net_load():
     assert soc[0] == 0.0
 
 def test_battery_loop_price_arbitrage():
-    """Verify that battery charges during low prices even if net_load > 0."""
+    """Verify that battery charges low, covers house load neutrally, and dumps at peak."""
     # 24 hours of constant 1kW load
     net_load = np.ones(24)
-    # 24 hours of prices: first 6 are 10, others are 100
-    prices = np.full(24, 100.0)
+    # 24 hours of prices: first 6 are cheap (10), middle are neutral (50), last 6 are peak (100)
+    prices = np.full(24, 50.0)
     prices[0:6] = 10.0
-    
+    prices[18:24] = 100.0
+
     p_arb_kw = 5.0
-    e_arb_kwh = 10.0
+    e_arb_kwh = 20.0 # Large enough to survive neutral hours and test peak dumping
     eta_rt = 1.0
-    
+
     p_charge, p_discharge, soc = simulate_battery_loop(
         net_load, p_arb_kw, e_arb_kwh, eta_rt, spot_prices=prices
     )
-    
-    # Should charge in hour 0, 1 (reaching 10kWh capacity)
+
+    # Should charge in hours 0-3 (reaching 20kWh capacity) during is_low
     assert p_charge[0] == 5.0
-    assert p_charge[1] == 5.0
-    assert p_charge[2] == 0.0
-    assert soc[1] == 10.0
-    
-    # Should discharge in hour 6 (first hour not low-price, with load > 0)
+    assert p_charge[3] == 5.0
+    assert p_charge[4] == 0.0
+    assert soc[4] == 20.0
+
+    # Should discharge during neutral hours to cover house load (Load Displacement)
     assert p_discharge[6] == 1.0
-    assert soc[6] == 9.0
+    assert soc[6] == 19.0
+
+    # After 12 neutral hours (hours 6-17), it has discharged 12kWh. SOC at hr 17 is 8.0kWh
+    assert soc[17] == 8.0
+
+    # Should discharge maximally during peak hours (hour 18)
+    assert p_discharge[18] == 5.0
+    assert soc[18] == 3.0
+    assert p_discharge[19] == 3.0 # Only 3kWh left
+    assert p_discharge[20] == 0.0 # Empty
 
 def test_arbitrage_signals_robustness():
     """Verify that arbitrage signals handle edge cases (empty, small, partial days)."""
